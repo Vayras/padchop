@@ -31,13 +31,16 @@ export function Waveform({ analysis, slices, selected, view, playhead, showOnset
     const canvas = canvasRef.current
     if (!canvas) return
     const draw = () => {
-      const dpr = window.devicePixelRatio || 1
       const w = canvas.clientWidth
       const h = canvas.clientHeight
+      // Device pixels per layout pixel, including any CSS zoom on the page.
+      const dpr = (window.devicePixelRatio || 1) * (canvas.getBoundingClientRect().width / w || 1)
       widthRef.current = w
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr
-        canvas.height = h * dpr
+      const cw = Math.round(w * dpr)
+      const ch = Math.round(h * dpr)
+      if (canvas.width !== cw || canvas.height !== ch) {
+        canvas.width = cw
+        canvas.height = ch
       }
       const g = canvas.getContext('2d')!
       g.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -56,6 +59,11 @@ export function Waveform({ analysis, slices, selected, view, playhead, showOnset
     return view.start + ((clientX - rect.left) / rect.width) * span
   }
   const xOf = (t: number) => ((t - view.start) / span) * widthRef.current
+  /** Pointer x in layout pixels (the page may be zoomed). */
+  const xAt = (canvas: HTMLCanvasElement, clientX: number) => {
+    const rect = canvas.getBoundingClientRect()
+    return ((clientX - rect.left) / rect.width) * widthRef.current
+  }
   const edgeNear = (x: number) => (single ? -1 : slices.findIndex((s) => s && Math.abs(xOf(s.start) - x) <= EDGE_GRAB_PX))
 
   return (
@@ -64,7 +72,7 @@ export function Waveform({ analysis, slices, selected, view, playhead, showOnset
       className="waveform"
       aria-label="Waveform. Click to move the playhead; drag a marker to move a pad's start."
       onPointerDown={(e) => {
-        const x = e.clientX - e.currentTarget.getBoundingClientRect().left
+        const x = xAt(e.currentTarget, e.clientX)
         const edge = edgeNear(x)
         if (edge >= 0) {
           dragRef.current = edge
@@ -82,7 +90,7 @@ export function Waveform({ analysis, slices, selected, view, playhead, showOnset
           onMoveSliceStart(dragRef.current, Math.max(0, Math.min(analysis.duration, timeAt(e.clientX))))
           return
         }
-        const x = e.clientX - e.currentTarget.getBoundingClientRect().left
+        const x = xAt(e.currentTarget, e.clientX)
         e.currentTarget.style.cursor = edgeNear(x) >= 0 ? 'ew-resize' : 'crosshair'
       }}
       onPointerUp={() => { dragRef.current = null }}

@@ -140,6 +140,18 @@ export default function App() {
     if (t) adoptNativeTrack(t)
   }, [tracks.length, adoptNativeTrack])
 
+  // Web: zoom the device up evenly once the window outgrows the 1180x740 layout (see .desk in index.css).
+  useEffect(() => {
+    if (inPlugin) return
+    const fit = () => {
+      const scale = Math.max(1, Math.min(innerWidth / 1180, innerHeight / 740))
+      document.documentElement.style.setProperty('--ui-scale', scale.toFixed(3))
+    }
+    fit()
+    addEventListener('resize', fit)
+    return () => removeEventListener('resize', fit)
+  }, [])
+
   // Dev only: ?load=<url> loads a sample on start (for testing layouts in frames).
   useEffect(() => {
     if (!import.meta.env.DEV || devLoaded) return
