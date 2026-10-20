@@ -88,9 +88,7 @@ export function KnobPanel(props: {
   enabled: boolean
   previewing: boolean
   seqPlaying: boolean
-  emptyPadSelected: boolean
   onChange(patch: Partial<Slice>): void
-  onSetPad(): void
   onPreview(): void
   onPlaySeq(): void
 }) {
@@ -144,10 +142,6 @@ export function KnobPanel(props: {
       )}
       <div className="grow" />
       <div className="transport-keys">
-        <button type="button" className="bigkey" onClick={props.onSetPad} disabled={!props.enabled || !!t || !!m || !!e} aria-label="Set the selected pad to start at the playhead (Enter)">
-          <span className={`bigkey__cap ${props.emptyPadSelected && !t && !m ? 'is-calling' : ''}`}>↵</span>
-          <span className="label">SET PAD</span>
-        </button>
         <button type="button" className="bigkey" onClick={props.onPreview} disabled={!props.enabled} aria-label={props.previewing ? 'Stop preview' : 'Preview from the playhead (Space)'}>
           <span className={`bigkey__round ${props.previewing ? 'is-on' : ''}`}>
             {props.previewing ? (

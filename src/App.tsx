@@ -551,7 +551,7 @@ export default function App() {
     ) : (
       <span className="lcd__info-left">
         <span className="lcd__pad lcd__pad--empty">PAD {selN} · EMPTY</span>
-        <span>MOVE PLAYHEAD, PRESS SET PAD ↵</span>
+        <span>MOVE PLAYHEAD, PRESS ↵ TO SET IT</span>
       </span>
     )
   } else if (loaded && page === 'seq') {
@@ -750,9 +750,7 @@ export default function App() {
               enabled={loaded}
               previewing={previewing}
               seqPlaying={seqPlaying}
-              emptyPadSelected={loaded && !sel}
               onChange={(patch) => active && updateTrack(active.id, (t) => ({ slices: t.slices.map((s, j) => (j === t.selected && s ? { ...s, ...patch } : s)) }))}
-              onSetPad={setSliceAtCursor}
               onPreview={togglePreview}
               onPlaySeq={toggleSequence}
             />
