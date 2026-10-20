@@ -10,7 +10,8 @@ export const SLOT_NAMES = ['A', 'B', 'C', 'D']
 export interface Track {
   id: string
   name: string
-  buffer: AudioBuffer
+  /** Decoded audio for Web Audio playback; null inside the plugin, where the engine holds it. */
+  buffer: AudioBuffer | null
   analysis: AnalysisResult
   slices: PadSlots
   selected: number
@@ -52,9 +53,9 @@ export interface Pattern {
 }
 
 let nextTrackId = 0
-export function makeTrack(name: string, buffer: AudioBuffer, analysis: AnalysisResult, slices: PadSlots, chop: ChopSettings = DEFAULT_CHOP): Track {
+export function makeTrack(name: string, buffer: AudioBuffer | null, analysis: AnalysisResult, slices: PadSlots, chop: ChopSettings = DEFAULT_CHOP, id?: string): Track {
   return {
-    id: `t${nextTrackId++}`,
+    id: id ?? `t${nextTrackId++}`,
     name,
     buffer,
     analysis,

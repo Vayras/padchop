@@ -27,3 +27,7 @@ dist-ssr
 docs/
 eval/
 vitest.eval.config.ts
+
+# Native build output and fetched frameworks
+native/build*/
+native/third_party/

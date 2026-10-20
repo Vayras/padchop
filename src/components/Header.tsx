@@ -10,13 +10,15 @@ interface Props {
   busy: boolean
   onSelect(id: string): void
   onAdd(file: File): void
+  /** Replaces the browser file picker (the plugin opens a native one). */
+  onAddClick?: () => void
   onRemove(id: string): void
   onAnchor(id: string): void
   onMute(id: string, muted: boolean): void
   onMatchKey(id: string, on: boolean): void
 }
 
-export function Header({ tracks, active, anchor, shiftOf, busy, onSelect, onAdd, onRemove, onAnchor, onMute, onMatchKey }: Props) {
+export function Header({ tracks, active, anchor, shiftOf, busy, onSelect, onAdd, onAddClick, onRemove, onAnchor, onMute, onMatchKey }: Props) {
   const input = useRef<HTMLInputElement>(null)
   // Removing a sample also drops its chops and sequence lane, so it takes two presses.
   const [confirming, setConfirming] = useState<string | null>(null)
@@ -80,7 +82,7 @@ export function Header({ tracks, active, anchor, shiftOf, busy, onSelect, onAdd,
         type="button"
         className={`key-dark add-sample ${tracks.length === 0 ? 'is-calling' : ''}`}
         disabled={busy || tracks.length >= MAX_TRACKS}
-        onClick={() => input.current?.click()}
+        onClick={() => (onAddClick ? onAddClick() : input.current?.click())}
         aria-label="Add sample"
         title={tracks.length >= MAX_TRACKS ? `All ${MAX_TRACKS} slots are full` : 'Load an audio file into the next slot'}
       >

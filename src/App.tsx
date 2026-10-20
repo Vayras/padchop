@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { runAnalysis } from './analysis/client'
 import { AudioEngine, DEFAULT_ENVELOPE, toMono, type Envelope, type Voice } from './audio/engine'
-import { playChop, prepareChop } from './audio/playChop'
+import { playChop, prepareChop, requireBuffer } from './audio/playChop'
 import { RenderCache } from './audio/renderCache'
 import { Sequencer as Clock } from './audio/sequencer'
 import { Header } from './components/Header'
@@ -11,6 +11,8 @@ import { LcdEnvelope, LcdMixer, LcdSequence, LcdTempo, Screen, type Page, type S
 import { Waveform } from './components/Waveform'
 import { autoChop, BEAT_STEPS, initialChop, type ChopMode, type ChopSettings } from './dsp/chop'
 import { parseNameHints } from './dsp/hints'
+import type { AnalysisResult } from './dsp/types'
+import { inPlugin, native, onNative, type Tick } from './host/juce'
 import { camelot, dbLabel, formatTime, gainDb, hzLabel, keyLabel, noteName, panLabel, secondsLabel, semitoneLabel, shortName } from './format'
 import {
   inScale, keyMatchShift, makeTrack, MAX_TRACKS, resizeLane, SLOT_NAMES, TRACK_COLORS,
@@ -59,13 +61,18 @@ export default function App() {
   const [taps, setTaps] = useState<number[]>([])
   const [seqView, setSeqView] = useState(0)
   const [dropping, setDropping] = useState(false)
+  // Plugin only: host tempo (0 = none), the latest engine tick, active-pad bitmask.
+  const [hostBpm, setHostBpm] = useState(0)
+  const [padMask, setPadMask] = useState(0)
+  const tickRef = useRef<Tick | null>(null)
+  const restoredRef = useRef(!inPlugin)
   const voiceRef = useRef<Voice | null>(null)
   const clockRef = useRef<Clock | null>(null)
 
   const active = tracks.find((t) => t.id === activeId) ?? tracks[0]
   const activeIndex = active ? tracks.indexOf(active) : -1
   const anchor = tracks.find((t) => t.id === anchorId) ?? tracks[0]
-  const bpm = bpmOverride ?? anchor?.analysis.tempo.bpm ?? 120
+  const bpm = hostBpm > 0 ? hostBpm : (bpmOverride ?? anchor?.analysis.tempo.bpm ?? 120)
   const anchorKey = anchor?.analysis.key
   const songKey = useMemo(
     () => (anchorKey ? { ...anchorKey, tonic: (anchorKey.tonic + keyShift + 1200) % 12 } : null),
@@ -112,6 +119,22 @@ export default function App() {
     [engine, tracks.length],
   )
 
+  // Plugin: the native side picks, decodes and analyses the file.
+  const addNativeTrack = useCallback(async () => {
+    if (tracks.length >= MAX_TRACKS) return
+    setError(null)
+    const t = await native<NativeTrack | null>('openFile')
+    setStatus(null)
+    if (!t) return
+    const analysis = analysisFromNative(t.analysis)
+    const chop = initialChop(analysis)
+    const track = makeTrack(t.name, null, analysis, autoChop(analysis, chop), chop, t.id)
+    setTracks((ts) => (ts.length >= MAX_TRACKS ? ts : [...ts, track]))
+    setActiveId(track.id)
+    setAnchorId((a) => a ?? track.id)
+    setPage('chop')
+  }, [tracks.length])
+
   // Dev only: ?load=<url> loads a sample on start (for testing layouts in frames).
   useEffect(() => {
     if (!import.meta.env.DEV || devLoaded) return
@@ -133,9 +156,12 @@ export default function App() {
 
   const removeTrack = (id: string) => {
     const rest = tracks.filter((t) => t.id !== id)
-    engine().stopAll()
-    engine().removeBus(id)
-    cacheRef.current?.dropTrack(id)
+    if (inPlugin) void native('removeTrack', id)
+    else {
+      engine().stopAll()
+      engine().removeBus(id)
+      cacheRef.current?.dropTrack(id)
+    }
     setTracks(rest)
     if (activeId === id || !activeId) setActiveId(rest[0]?.id ?? null)
     if (anchor?.id === id) { setAnchorId(rest[0]?.id ?? null); setBpmOverride(null) }
@@ -161,7 +187,12 @@ export default function App() {
       })
     }
   }, [tracks])
-  const meterOf = useCallback((id: string) => engineRef.current?.meter(id) ?? 0, [])
+  const trackIdsRef = useRef<string[]>([])
+  useEffect(() => { trackIdsRef.current = tracks.map((t) => t.id) })
+  const meterOf = useCallback(
+    (id: string) => (inPlugin ? tickRef.current?.meters[trackIdsRef.current.indexOf(id)] ?? 0 : engineRef.current?.meter(id) ?? 0),
+    [],
+  )
 
   // ---------- Time-stretch renders ----------
   // Pre-render every chop that can be played (active track first) once knob drags settle.
@@ -198,7 +229,7 @@ export default function App() {
       }
       const semitones = slice.semitones + semis + shiftOf(t) + keyShift
       const voice: Voice = preview
-        ? eng.play(t.buffer, channel, { start: slice.start, end: slice.end, semitones, gain: slice.gain, bus: t.id, onEnded })
+        ? eng.play(requireBuffer(t), channel, { start: slice.start, end: slice.end, semitones, gain: slice.gain, bus: t.id, onEnded })
         : playChop(eng, cache(), { track: t, start: slice.start, end: slice.end, semitones, gain: slice.gain, envelope: slice.env, channel, projectBpm: bpm, onEnded })
       voiceRef.current = voice
       setPreviewing(preview)
@@ -214,23 +245,29 @@ export default function App() {
         if (!slice) return
         const semis = keyboardSemitone(i, active.octave)
         setBrushes((b) => ({ ...b, [active.id]: { pad: active.selected, semitones: semis, note: true } }))
-        startVoice(active, slice, semis, `${active.id}:kb:${i}`, i)
+        if (inPlugin) void native('triggerPad', activeIndex, i)
+        else startVoice(active, slice, semis, `${active.id}:kb:${i}`, i)
       } else {
         const slice = active.slices[i]
         if (!slice) { updateTrack(active.id, { selected: i }); return }
         updateTrack(active.id, { selected: i })
         setBrushes((b) => ({ ...b, [active.id]: { pad: i, semitones: 0, note: false } }))
-        startVoice(active, slice, 0, `${active.id}:pads`, i)
+        if (inPlugin) void native('triggerPad', activeIndex, i)
+        else startVoice(active, slice, 0, `${active.id}:pads`, i)
       }
     },
-    [active, startVoice, updateTrack],
+    [active, activeIndex, startVoice, updateTrack],
   )
 
   const togglePreview = useCallback(() => {
     if (!active) return
+    if (inPlugin) {
+      void (previewing ? native('stopAll') : native('preview', activeIndex, active.cursor))
+      return
+    }
     if (voiceRef.current && previewing) { voiceRef.current.stop(); return }
     startVoice(active, { start: active.cursor, end: active.analysis.duration, semitones: 0, gain: 1 }, 0, `${active.id}:pads`, undefined, true)
-  }, [active, startVoice, previewing])
+  }, [active, activeIndex, startVoice, previewing])
 
   // Playhead animation for the most recent voice.
   useEffect(() => {
@@ -243,12 +280,75 @@ export default function App() {
     return () => cancelAnimationFrame(raf)
   }, [])
 
+  // ---------- Plugin bridge ----------
+  // The native engine plays everything; the UI streams it the project and
+  // takes meters, steps, the playhead and pad lights from its 30 Hz tick.
+  const activeIndexRef = useRef(activeIndex)
+  useEffect(() => { activeIndexRef.current = activeIndex })
+  useEffect(() => {
+    if (!inPlugin) return
+    const offTick = onNative<Tick>('tick', (t) => {
+      tickRef.current = t
+      setClockStep(t.step)
+      setSeqPlaying(t.seqPlaying)
+      setPreviewing(t.previewing)
+      setHostBpm(t.hostBpm)
+      setStretching(t.stretching)
+      setPlayhead(t.playheadTrack === activeIndexRef.current && t.playheadTime >= 0 ? t.playheadTime : null)
+      setPadMask(t.pads[activeIndexRef.current] ?? 0)
+    })
+    const offLoading = onNative<string>('loading', (name) => setStatus({ stage: 'Analysing', name }))
+    const offError = onNative<string>('loadError', (message) => { setStatus(null); setError(message) })
+    const restore = (data: NativeRestore) => {
+      const saved = data.project?.tracks ?? []
+      const loaded = new Map(data.tracks.map((t) => [t.id, t]))
+      // Wait until every saved track has finished loading before taking over.
+      if (saved.some((t) => !loaded.has(t.id))) return
+      const entries: (Partial<Track> & { id: string })[] = saved.length ? saved : data.tracks.map((t) => ({ id: t.id }))
+      const rebuilt = entries.flatMap((st) => {
+        const nt = loaded.get(st.id)
+        if (!nt) return []
+        const analysis = analysisFromNative(nt.analysis)
+        const chop = st.chop ?? initialChop(analysis)
+        const base = makeTrack(nt.name, null, analysis, autoChop(analysis, chop), chop, nt.id)
+        return [{ ...base, ...st, id: nt.id, name: nt.name, buffer: null, analysis }]
+      })
+      setTracks(rebuilt)
+      setActiveId(rebuilt[0]?.id ?? null)
+      setAnchorId(data.project?.anchorId ?? rebuilt[0]?.id ?? null)
+      setBpmOverride(data.project?.bpmOverride ?? null)
+      setKeyShift(data.project?.keyShift ?? 0)
+      if (data.project?.pattern) setPattern(data.project.pattern)
+      restoredRef.current = true
+    }
+    const offRestore = onNative<NativeRestore>('restore', restore)
+    void native<NativeRestore>('uiReady').then(restore)
+    return () => { offTick(); offLoading(); offError(); offRestore() }
+  }, [])
+
+  useEffect(() => {
+    if (!inPlugin || !restoredRef.current) return
+    const project = {
+      tracks: tracks.map(({ buffer: _buffer, analysis: _analysis, ...rest }) => rest),
+      anchorId: anchor?.id ?? null,
+      bpmOverride,
+      keyShift,
+      pattern,
+    }
+    const timer = setTimeout(() => void native('setProject', JSON.stringify(project)), 30)
+    return () => clearTimeout(timer)
+  }, [tracks, anchor, bpmOverride, keyShift, pattern])
+
   // ---------- Sequencer ----------
   // The clock reads the latest state through a ref so edits apply while playing.
   const live = useRef({ tracks, pattern, bpm, keyShift, shiftOf })
   useEffect(() => { live.current = { tracks, pattern, bpm, keyShift, shiftOf } })
 
   const toggleSequence = useCallback(() => {
+    if (inPlugin) {
+      void native('setSequencePlaying', !seqPlaying)
+      return
+    }
     const eng = engine()
     void eng.resume()
     clockRef.current ??= new Clock(eng.ctx, {
@@ -280,7 +380,7 @@ export default function App() {
     })
     if (clockRef.current.playing) stopSequence()
     else { clockRef.current.start(); setSeqPlaying(true) }
-  }, [engine, cache, stopSequence])
+  }, [engine, cache, stopSequence, seqPlaying])
 
   useEffect(() => {
     if (!seqPlaying) return
@@ -559,7 +659,7 @@ export default function App() {
     info = <span style={{ opacity: 0.85 }}>{SLOT_NAMES[activeIndex]} · {brush?.note && songKey ? `NOTE ${noteName(songKey.tonic + brush.semitones)}` : `PAD ${String((brush?.pad ?? active.selected) + 1).padStart(2, '0')}`} ARMED · PRESS STEPS TO PLACE</span>
     timeText = seqPlaying && seqStep >= 0 ? `BAR ${Math.floor(seqStep / pattern.stepsPerBar) + 1} · STEP ${seqStep + 1}/${total}` : `STOPPED · ${total} STEPS`
   } else if (loaded && page === 'tempo') {
-    info = <span style={{ opacity: 0.85 }}>TAP 4× TO SET · SYNCED SAMPLES STRETCH TO THIS TEMPO</span>
+    info = <span style={{ opacity: 0.85 }}>{hostBpm > 0 ? 'TEMPO FOLLOWS THE HOST · SYNCED SAMPLES STRETCH TO IT' : 'TAP 4× TO SET · SYNCED SAMPLES STRETCH TO THIS TEMPO'}</span>
     timeText = stretching ? 'STRETCHING…' : ''
   } else if (loaded && page === 'amp') {
     info = sel ? (
@@ -591,7 +691,7 @@ export default function App() {
     <div className="desk">
       <div
         className={`chassis ${dropping ? 'is-drop' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDropping(true) }}
+        onDragOver={(e) => { if (inPlugin) return; e.preventDefault(); setDropping(true) }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDropping(false) }}
         onDrop={(e) => {
           e.preventDefault()
@@ -608,6 +708,7 @@ export default function App() {
           busy={status !== null}
           onSelect={setActiveId}
           onAdd={addTrack}
+          onAddClick={inPlugin ? () => void addNativeTrack() : undefined}
           onRemove={removeTrack}
           onAnchor={(id) => { setAnchorId(id); setBpmOverride(null) }}
           onMute={(id, muted) => updateTrack(id, { muted })}
@@ -652,7 +753,8 @@ export default function App() {
                           single={mode === 'keys'}
                           onSeek={(t) => {
                             updateTrack(active.id, { cursor: t })
-                            if (previewing) {
+                            if (previewing && inPlugin) void native('preview', activeIndex, t)
+                            else if (previewing) {
                               startVoice(active, { start: t, end: active.analysis.duration, semitones: 0, gain: 1 }, 0, `${active.id}:pads`, undefined, true)
                             }
                           }}
@@ -674,7 +776,7 @@ export default function App() {
                   ) : (
                     <div className="lcd-centre">
                       <span className="lcd-big">NO AUDIO LOADED</span>
-                      <span className="lcd-sub">PRESS ADD SAMPLE · OR DROP A FILE ON THE DEVICE</span>
+                      <span className="lcd-sub">{inPlugin ? 'PRESS ADD SAMPLE TO LOAD A FILE' : 'PRESS ADD SAMPLE · OR DROP A FILE ON THE DEVICE'}</span>
                       {error && <span className="lcd-sub">ERROR: {error}</span>}
                     </div>
                   )}
@@ -761,7 +863,7 @@ export default function App() {
               owner={active ? `${SLOT_NAMES[activeIndex]} ${shortName(active.name, 22).toUpperCase()}` : 'NO SAMPLE'}
               pads={pads}
               selected={active ? active.selected : -1}
-              playing={playingPads}
+              playing={inPlugin ? maskToSet(padMask) : playingPads}
               keyboard={!!active?.keyboard}
               octave={active?.octave ?? 0}
               canKeyboard={!!sel}
@@ -785,4 +887,31 @@ function isTextEntry(target: EventTarget | null): boolean {
   if (target instanceof HTMLTextAreaElement) return true
   if (!(target instanceof HTMLInputElement)) return false
   return !['range', 'checkbox', 'radio', 'button', 'file'].includes(target.type)
+}
+
+interface NativeTrack {
+  id: string
+  name: string
+  analysis: Omit<AnalysisResult, 'peaks'> & { peaks: number[] }
+}
+
+interface NativeRestore {
+  tracks: NativeTrack[]
+  project: null | {
+    tracks?: (Partial<Track> & { id: string })[]
+    anchorId?: string | null
+    bpmOverride?: number | null
+    keyShift?: number
+    pattern?: Pattern
+  }
+}
+
+function analysisFromNative(a: NativeTrack['analysis']): AnalysisResult {
+  return { ...a, peaks: Float32Array.from(a.peaks) }
+}
+
+function maskToSet(mask: number): Set<number> {
+  const s = new Set<number>()
+  for (let i = 0; i < PAD_COUNT; i++) if (mask & (1 << i)) s.add(i)
+  return s
 }
