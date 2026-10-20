@@ -13,13 +13,15 @@ interface Props {
   /** Arc colour; omit for a plain ring (position knobs). */
   accent?: string
   disabled?: boolean
+  /** Hidden on phones, where the compact layout keeps two knobs. */
+  secondary?: boolean
   onChange(value: number): void
 }
 
 const SWEEP = 270
 
 /** Hardware-style knob: drag up/down, scroll, or use the arrow keys. */
-export function Knob({ label, value, min, max, perPixel, step, display, accent, disabled, onChange }: Props) {
+export function Knob({ label, value, min, max, perPixel, step, display, accent, disabled, secondary, onChange }: Props) {
   const drag = useRef<{ y: number; v: number } | null>(null)
   const clamp = (v: number) => Math.min(max, Math.max(min, v))
   const f = disabled ? 0 : (clamp(value) - min) / (max - min || 1)
@@ -31,7 +33,7 @@ export function Knob({ label, value, min, max, perPixel, step, display, accent, 
   return (
     <button
       type="button"
-      className="knob"
+      className={`knob ${secondary ? 'wide-only' : ''}`}
       disabled={disabled}
       aria-label={`${label} ${display}`}
       onPointerDown={(e) => {

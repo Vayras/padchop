@@ -6,6 +6,9 @@ import { Knob } from './Knob'
 
 /* ---------- Mode strip ---------- */
 
+/** Phone-width labels, from the compact layout. */
+const MODE_SHORT: Record<ChopMode, string> = { find: 'FIND', slicer: 'SLICE', random: 'RANDOM', transients: 'TRANS', keys: 'KEY' }
+
 const MODE_LABELS: Record<ChopMode, string> = {
   find: 'FIND',
   slicer: 'SLICER',
@@ -32,12 +35,15 @@ export function ModeStrip(props: {
           <button key={m.id} type="button" className="ledkey" aria-pressed={on} disabled={!props.enabled} onClick={() => props.onMode(m.id)} title={m.hint}>
             <span className={`led ${on && props.enabled ? 'is-on' : ''}`} style={on && !props.lit ? ({ '--led': '#B5553F' } as React.CSSProperties) : undefined} />
             <span className="ledkey__cap" />
-            <span className="label">{MODE_LABELS[m.id]}</span>
+            <span className="label">
+              <span className="wide-only">{MODE_LABELS[m.id]}</span>
+              <span className="phone-only">{MODE_SHORT[m.id]}</span>
+            </span>
           </button>
         )
       })}
       <div className="grow" />
-      <div className="zoom">
+      <div className="zoom wide-only">
         <span className="zoom__value">{props.zoomLabel}</span>
         <div className="zoom__keys">
           <button type="button" className="key-light key--sq" aria-label="Zoom out" disabled={!props.enabled} onClick={() => props.onZoom(2)}>−</button>
@@ -46,7 +52,7 @@ export function ModeStrip(props: {
         </div>
         <span className="label">ZOOM</span>
       </div>
-      <button type="button" className="ledkey ledkey--light" aria-pressed={props.showOnsets} onClick={() => props.onShowOnsets(!props.showOnsets)}>
+      <button type="button" className="ledkey ledkey--light wide-only" aria-pressed={props.showOnsets} onClick={() => props.onShowOnsets(!props.showOnsets)}>
         <span className={`led ${props.showOnsets ? 'is-on' : ''}`} style={{ '--led': '#F5C042' } as React.CSSProperties} />
         <span className="ledkey__cap" />
         <span className="label">TRANSIENTS</span>
@@ -130,9 +136,9 @@ export function KnobPanel(props: {
             display={s ? semitoneLabel(s.semitones).toLowerCase() : ''} onChange={(v) => props.onChange({ semitones: Math.round(v) })} />
           <Knob label="GAIN" value={s?.gain ?? 1} min={0} max={2} step={0.05} perPixel={0.01} accent={accent} disabled={!s}
             display={s ? gainDb(s.gain) : ''} onChange={(gain) => props.onChange({ gain })} />
-          <Knob label="TRIM START" value={s?.start ?? 0} min={0} max={Math.max(0.01, (s?.end ?? 1) - 0.01)} step={0.01} perPixel={0.004} disabled={!s}
+          <Knob secondary label="TRIM START" value={s?.start ?? 0} min={0} max={Math.max(0.01, (s?.end ?? 1) - 0.01)} step={0.01} perPixel={0.004} disabled={!s}
             display={s ? formatTime(s.start) : ''} onChange={(start) => props.onChange({ start })} />
-          <Knob label="TRIM END" value={s?.end ?? 0} min={(s?.start ?? 0) + 0.01} max={props.duration} step={0.01} perPixel={0.004} disabled={!s}
+          <Knob secondary label="TRIM END" value={s?.end ?? 0} min={(s?.start ?? 0) + 0.01} max={props.duration} step={0.01} perPixel={0.004} disabled={!s}
             display={s ? formatTime(s.end) : ''} onChange={(end) => props.onChange({ end })} />
         </>
       )}

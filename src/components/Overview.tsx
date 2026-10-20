@@ -7,10 +7,11 @@ interface Props {
   slices: PadSlots
   view: { start: number; end: number }
   onView(view: { start: number; end: number }): void
+  className?: string
 }
 
 /** Whole-sample strip above the LCD waveform, with a draggable zoom window. */
-export function Overview({ analysis, slices, view, onView }: Props) {
+export function Overview({ analysis, slices, view, onView, className = '' }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drag = useRef<number | null>(null)
   const dur = analysis.duration
@@ -64,7 +65,7 @@ export function Overview({ analysis, slices, view, onView }: Props) {
   }
 
   return (
-    <div className="overview">
+    <div className={`overview ${className}`}>
       <canvas
         ref={canvasRef}
         aria-label="Sample overview. Drag to move the zoomed view."

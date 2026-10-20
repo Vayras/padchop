@@ -25,7 +25,7 @@ export function Header({ tracks, active, anchor, shiftOf, busy, onSelect, onAdd,
     <header className="header">
       <div className="brand">
         <span className="brand__name">padchop</span>
-        <span className="label label--wide label--muted">Sample chopper · 16 pads</span>
+        <span className="label label--wide label--muted wide-only">Sample chopper · 16 pads</span>
       </div>
 
       <div className="slots">
@@ -81,11 +81,12 @@ export function Header({ tracks, active, anchor, shiftOf, busy, onSelect, onAdd,
         className={`key-dark add-sample ${tracks.length === 0 ? 'is-calling' : ''}`}
         disabled={busy || tracks.length >= MAX_TRACKS}
         onClick={() => input.current?.click()}
+        aria-label="Add sample"
         title={tracks.length >= MAX_TRACKS ? `All ${MAX_TRACKS} slots are full` : 'Load an audio file into the next slot'}
       >
         <span className={`led led--sm ${tracks.length === 0 || busy ? 'is-on' : ''}`} />
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
-        ADD SAMPLE
+        <span className="wide-only">ADD SAMPLE</span>
       </button>
       <input
         ref={input}

@@ -30,6 +30,9 @@ const STAGE_PROGRESS: Record<string, number> = {
   'Finding sample regions': 90,
 }
 
+// Dev-only autoload guard (StrictMode runs mount effects twice).
+let devLoaded = false
+
 export default function App() {
   const engineRef = useRef<AudioEngine | null>(null)
   const engine = useCallback(() => (engineRef.current ??= new AudioEngine()), [])
@@ -108,6 +111,19 @@ export default function App() {
     },
     [engine, tracks.length],
   )
+
+  // Dev only: ?load=<url> loads a sample on start (for testing layouts in frames).
+  useEffect(() => {
+    if (!import.meta.env.DEV || devLoaded) return
+    const url = new URLSearchParams(location.search).get('load')
+    if (!url) return
+    devLoaded = true
+    void fetch(url)
+      .then((r) => r.blob())
+      .then((b) => addTrack(new File([b], url.split('/').pop() ?? 'sample.wav')))
+    // Only on first mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const stopSequence = useCallback(() => {
     clockRef.current?.stop()
@@ -528,9 +544,9 @@ export default function App() {
       <span className="lcd__info-left">
         <span className="lcd__pad" style={{ background: accent }}>PAD {selN}</span>
         <span>START {formatTime(sel.start)}</span>
-        <span>LEN {(sel.end - sel.start).toFixed(2)}S · {(((sel.end - sel.start) * bpm) / 60).toFixed(1)} BT</span>
+        <span className="wide-only">LEN {(sel.end - sel.start).toFixed(2)}S · {(((sel.end - sel.start) * bpm) / 60).toFixed(1)} BT</span>
         <span>PITCH {semitoneLabel(sel.semitones)}</span>
-        <span>GAIN {gainDb(sel.gain).toUpperCase()}</span>
+        <span className="wide-only">GAIN {gainDb(sel.gain).toUpperCase()}</span>
       </span>
     ) : (
       <span className="lcd__info-left">
@@ -624,7 +640,7 @@ export default function App() {
                 <>
                   {active ? (
                     <>
-                      <Overview analysis={active.analysis} slices={active.slices} view={active.view} onView={(view) => updateTrack(active.id, { view })} />
+                      <Overview className="wide-only" analysis={active.analysis} slices={active.slices} view={active.view} onView={(view) => updateTrack(active.id, { view })} />
                       <div className="wave-wrap">
                         <Waveform
                           analysis={active.analysis}
