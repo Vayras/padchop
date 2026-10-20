@@ -40,6 +40,7 @@ public:
     /** Decode and analyse a file in the background; `done` gets the track JSON or an error. */
     void loadFile(const juce::File& file, std::function<void(juce::var track, juce::String error)> done, std::string id = {});
     void removeTrack(const std::string& id);
+    int trackCount() const { return static_cast<int>(loaded_.size()); }
     /** The UI's project (tracks, pads, pattern, mixer, tempo) as JSON. */
     void setProject(const juce::var& project);
     /** What a freshly opened editor needs: every loaded track and the saved project. */

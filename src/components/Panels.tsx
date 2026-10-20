@@ -7,7 +7,7 @@ import { Knob } from './Knob'
 /* ---------- Mode strip ---------- */
 
 /** Phone-width labels, from the compact layout. */
-const MODE_SHORT: Record<ChopMode, string> = { find: 'FIND', slicer: 'SLICE', random: 'RANDOM', transients: 'TRANS', keys: 'KEY' }
+const MODE_SHORT: Record<ChopMode, string> = { find: 'FIND', slicer: 'SLICE', random: 'RAND', transients: 'TRANS', keys: 'KEY' }
 
 const MODE_LABELS: Record<ChopMode, string> = {
   find: 'FIND',

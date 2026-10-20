@@ -19,6 +19,12 @@ const char* mimeFor(const juce::String& path) {
     return "application/octet-stream";
 }
 
+const juce::String kAudioFiles = "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.ogg";
+
+bool isAudioFile(const juce::String& path) {
+    return juce::File(path).hasFileExtension("wav;aif;aiff;flac;mp3;m4a;ogg");
+}
+
 int intArg(const juce::Array<juce::var>& args, int i, int fallback = 0) {
     return i < args.size() ? static_cast<int>(args[i]) : fallback;
 }
@@ -34,7 +40,7 @@ Editor::Editor(Processor& processor)
     web_.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
     setResizable(true, true);
     setResizeLimits(390, 600, 2400, 1800);
-    setSize(1280, 860);
+    setSize(1180, 740);
     processor_.onRestored = [this] {
         web_.emitEventIfBrowserIsVisible("restore", processor_.restoreData());
     };
@@ -47,6 +53,36 @@ Editor::~Editor() {
 }
 
 void Editor::resized() { web_.setBounds(getLocalBounds()); }
+
+void Editor::loadTrack(const juce::File& file, std::function<void(juce::var)> done) {
+    ++loading_;
+    web_.emitEventIfBrowserIsVisible("loading", file.getFileNameWithoutExtension());
+    processor_.loadFile(file, [self = juce::Component::SafePointer<Editor>(this), done](juce::var track, juce::String error) {
+        if (self == nullptr) return;
+        --self->loading_;
+        if (error.isNotEmpty()) self->web_.emitEventIfBrowserIsVisible("loadError", error);
+        done(track);
+    });
+}
+
+bool Editor::isInterestedInFileDrag(const juce::StringArray& files) {
+    for (const auto& f : files)
+        if (isAudioFile(f)) return true;
+    return false;
+}
+
+void Editor::fileDragEnter(const juce::StringArray&, int, int) { web_.emitEventIfBrowserIsVisible("dragging", true); }
+void Editor::fileDragExit(const juce::StringArray&) { web_.emitEventIfBrowserIsVisible("dragging", false); }
+
+void Editor::filesDropped(const juce::StringArray& files, int, int) {
+    web_.emitEventIfBrowserIsVisible("dragging", false);
+    for (const auto& f : files) {
+        if (!isAudioFile(f) || processor_.trackCount() + loading_ >= kMaxTracks) continue;
+        loadTrack(juce::File(f), [this](juce::var track) {
+            if (!track.isVoid()) web_.emitEventIfBrowserIsVisible("trackAdded", track);
+        });
+    }
+}
 
 std::optional<juce::WebBrowserComponent::Resource> Editor::resource(const juce::String& url) {
     auto path = url.upToFirstOccurrenceOf("?", false, false).trimCharactersAtStart("/");
@@ -71,15 +107,11 @@ juce::WebBrowserComponent::Options Editor::options() {
         .withResourceProvider([this](const juce::String& url) { return resource(url); })
         // Ask the user for an audio file, then decode and analyse it natively.
         .withNativeFunction("openFile", [this](Args, Done done) {
-            chooser_ = std::make_unique<juce::FileChooser>("Add sample", juce::File(), "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.ogg");
+            chooser_ = std::make_unique<juce::FileChooser>("Add sample", juce::File(), kAudioFiles);
             chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this, done](const juce::FileChooser& fc) {
                 const auto file = fc.getResult();
                 if (file == juce::File()) { done(juce::var()); return; }
-                web_.emitEventIfBrowserIsVisible("loading", file.getFileNameWithoutExtension());
-                processor_.loadFile(file, [this, done](juce::var track, juce::String error) {
-                    if (error.isNotEmpty()) web_.emitEventIfBrowserIsVisible("loadError", error);
-                    done(track);
-                });
+                loadTrack(file, done);
             });
         })
         .withNativeFunction("setProject", [this](Args args, Done done) {
@@ -114,6 +146,8 @@ juce::WebBrowserComponent::Options Editor::options() {
 }
 
 void Editor::timerCallback() {
+    // WebKit re-registers for drags as its views come and go; keep it out of the way.
+    routeWebViewDropsToEditor(web_);
     auto& e = processor_.engine();
     auto* o = new juce::DynamicObject();
     o->setProperty("step", e.currentStep.load());
@@ -132,5 +166,9 @@ void Editor::timerCallback() {
     o->setProperty("pads", pads);
     web_.emitEventIfBrowserIsVisible("tick", juce::var(o));
 }
+
+#if !JUCE_MAC
+void routeWebViewDropsToEditor(juce::Component&) {}
+#endif
 
 } // namespace padchop::plugin

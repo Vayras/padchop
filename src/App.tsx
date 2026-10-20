@@ -120,12 +120,9 @@ export default function App() {
   )
 
   // Plugin: the native side picks, decodes and analyses the file.
-  const addNativeTrack = useCallback(async () => {
-    if (tracks.length >= MAX_TRACKS) return
-    setError(null)
-    const t = await native<NativeTrack | null>('openFile')
+  /** A track the plugin decoded and analysed (from ADD SAMPLE or a file dropped on the window). */
+  const adoptNativeTrack = useCallback((t: NativeTrack) => {
     setStatus(null)
-    if (!t) return
     const analysis = analysisFromNative(t.analysis)
     const chop = initialChop(analysis)
     const track = makeTrack(t.name, null, analysis, autoChop(analysis, chop), chop, t.id)
@@ -133,7 +130,15 @@ export default function App() {
     setActiveId(track.id)
     setAnchorId((a) => a ?? track.id)
     setPage('chop')
-  }, [tracks.length])
+  }, [])
+
+  const addNativeTrack = useCallback(async () => {
+    if (tracks.length >= MAX_TRACKS) return
+    setError(null)
+    const t = await native<NativeTrack | null>('openFile')
+    setStatus(null)
+    if (t) adoptNativeTrack(t)
+  }, [tracks.length, adoptNativeTrack])
 
   // Dev only: ?load=<url> loads a sample on start (for testing layouts in frames).
   useEffect(() => {
@@ -299,6 +304,8 @@ export default function App() {
     })
     const offLoading = onNative<string>('loading', (name) => setStatus({ stage: 'Analysing', name }))
     const offError = onNative<string>('loadError', (message) => { setStatus(null); setError(message) })
+    const offAdded = onNative<NativeTrack>('trackAdded', adoptNativeTrack)
+    const offDragging = onNative<boolean>('dragging', setDropping)
     const restore = (data: NativeRestore) => {
       const saved = data.project?.tracks ?? []
       const loaded = new Map(data.tracks.map((t) => [t.id, t]))
@@ -323,8 +330,8 @@ export default function App() {
     }
     const offRestore = onNative<NativeRestore>('restore', restore)
     void native<NativeRestore>('uiReady').then(restore)
-    return () => { offTick(); offLoading(); offError(); offRestore() }
-  }, [])
+    return () => { offTick(); offLoading(); offError(); offAdded(); offDragging(); offRestore() }
+  }, [adoptNativeTrack])
 
   useEffect(() => {
     if (!inPlugin || !restoredRef.current) return
@@ -776,7 +783,7 @@ export default function App() {
                   ) : (
                     <div className="lcd-centre">
                       <span className="lcd-big">NO AUDIO LOADED</span>
-                      <span className="lcd-sub">{inPlugin ? 'PRESS ADD SAMPLE TO LOAD A FILE' : 'PRESS ADD SAMPLE · OR DROP A FILE ON THE DEVICE'}</span>
+                      <span className="lcd-sub">PRESS ADD SAMPLE · OR DROP A FILE ON THE DEVICE</span>
                       {error && <span className="lcd-sub">ERROR: {error}</span>}
                     </div>
                   )}

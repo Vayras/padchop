@@ -45,6 +45,9 @@ target_sources(padchop_plugin PRIVATE
     src/Engine.cpp
     src/RenderCache.cpp
     src/State.cpp)
+if(APPLE)
+    target_sources(padchop_plugin PRIVATE src/WebViewDrops.mm)
+endif()
 
 target_compile_definitions(padchop_plugin PUBLIC
     JUCE_WEB_BROWSER=1

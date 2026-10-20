@@ -1,6 +1,5 @@
 /* padchop — "Hardware" design: a sampler chassis with an LCD, LED keys and lit pads. */
 :root {
-  --desk: #b4afa5;
   --chassis: #dedbd3;
   --panel: #cfcbc2;
   --panel-raised: #d3cfc6;
@@ -32,12 +31,12 @@
   color-scheme: light;
   font-family: var(--sans);
   color: var(--ink);
-  background: var(--desk);
+  background: var(--chassis);
   -webkit-font-smoothing: antialiased;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--desk); min-height: 100vh; }
+body { margin: 0; background: var(--chassis); min-height: 100vh; }
 button { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid #4f9dff; outline-offset: 3px; }
 .mono { font-family: var(--mono); }
@@ -47,20 +46,18 @@ button { font: inherit; color: inherit; }
 .grow { flex-grow: 1; }
 
 /* ---------- Desk & chassis ---------- */
-.desk { min-height: 100vh; padding: 32px 20px; display: flex; justify-content: center; align-items: flex-start; }
+.desk { min-height: 100vh; }
 .chassis {
   width: 100%;
-  max-width: 1360px;
+  min-height: 100vh;
   background: var(--chassis);
-  border-radius: 28px;
-  padding: 24px;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 -2px 0 rgba(0, 0, 0, 0.08) inset, 0 30px 60px rgba(40, 34, 26, 0.28), 0 4px 10px rgba(40, 34, 26, 0.18);
+  padding: 12px 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 12px;
   transition: box-shadow 150ms;
 }
-.chassis.is-drop { box-shadow: 0 0 0 4px var(--record), 0 30px 60px rgba(40, 34, 26, 0.28); }
+.chassis.is-drop { box-shadow: inset 0 0 0 4px var(--record); }
 .row { display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch; }
 .col-main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
 .col-side { flex: 1 1 460px; min-width: 0; }
@@ -534,12 +531,85 @@ button { font: inherit; color: inherit; }
 }
 .toast--error { background: var(--record); }
 
+/* ---------- Wide windows: one screen, no scrolling ---------- */
+/* Two columns that fit the window height: screen | pads on top,
+   mode keys | knobs + transport underneath. */
+@media (min-width: 861px) {
+  .chassis { height: 100vh; min-height: 600px; }
+  .row {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 36vw, 540px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 12px 16px;
+  }
+  .col-main, .col-side { display: contents; }
+
+  /* Screen grows with the window; the waveform takes the spare height. */
+  .bezel { grid-area: 1 / 1; min-height: 0; flex-wrap: nowrap; padding: 10px; gap: 10px; }
+  .bezel__screen { flex: 1 1 0; }
+  .pagekeys { flex: none; gap: 10px; padding: 4px 2px; }
+  .lcd { flex: 1; min-height: 0; padding: 12px 14px; gap: 8px; }
+  .lcd__softlabels { margin: 0 -14px -12px; }
+  .lcd__page { flex: 1; min-height: 0; }
+  .wave-wrap, .lcd-centre { flex: 1; height: auto; min-height: 90px; }
+  .lcdseq, .lcdtempo, .lcdenv, .lcdmix { flex: 1; min-height: 0; }
+  .lcdseq { overflow-y: auto; }
+  .lcdenv__graph { flex: 1; height: auto; min-height: 80px; }
+  .lcdmix__body { flex: 1; height: auto; min-height: 70px; }
+
+  /* Mode keys on one row under the screen. */
+  .modestrip { grid-area: 2 / 1; flex-wrap: nowrap; gap: 10px; align-self: center; padding: 0 2px; }
+  .ledkey { flex: 0 1 76px; min-width: 0; }
+  .ledkey__cap { width: 100%; }
+  .ledkey--light { flex: none; }
+  .ledkey--light .ledkey__cap { width: 76px; }
+  .ledkey .label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Pads fill the side column; four rows share its height. */
+  .well { grid-area: 1 / 2; min-height: 0; height: auto; padding: 14px; gap: 12px; }
+  .pads { flex: 1; min-height: 0; grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .pad { aspect-ratio: auto; min-height: 0; }
+
+  /* Knobs + transport under the pads. */
+  .knobpanel { grid-area: 2 / 2; flex-wrap: nowrap; gap: 10px; padding: 12px 14px; border-radius: 14px; }
+  .knob { flex: 0 1 68px; min-width: 52px; width: auto; gap: 6px; }
+  .knob__ring { width: 50px; height: 50px; padding: 4px; }
+  .knob__cap::after { top: 4px; height: 11px; }
+  .knob .label { font-size: 10px; letter-spacing: 0.06em; white-space: nowrap; }
+  .knob__value { font-size: 11px; white-space: nowrap; }
+  .transport-keys { gap: 10px; }
+  .bigkey { gap: 6px; }
+  .bigkey .label { font-size: 10px; white-space: nowrap; }
+  .bigkey__round, .playseq__cap { width: 50px; height: 50px; }
+  .softkeys span { padding: 0 4px; }
+  .softkey { width: 100%; max-width: 64px; }
+}
+/* Narrower windows: short mode labels, tighter knobs. */
+@media (min-width: 861px) and (max-width: 1040px) {
+  .ledkey .wide-only { display: none; }
+  .ledkey .phone-only { display: inline; }
+  .modestrip { flex-wrap: wrap; gap: 8px; }
+  .ledkey { flex: 1 1 0; min-width: 44px; }
+  .ledkey--light { flex: none; }
+  .ledkey .label { overflow: visible; }
+  .zoom .key--sq { width: 36px; }
+  .zoom .key-light:not(.key--sq) { width: 44px !important; }
+  .header .grille { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr) clamp(340px, 40vw, 420px); }
+  .knobpanel { gap: 6px; padding: 10px; }
+  .knob { flex-basis: 60px; min-width: 44px; }
+  .knob__ring { width: 44px; height: 44px; }
+  .knob .label { font-size: 9px; letter-spacing: 0.02em; }
+  .bigkey .label { display: none; }
+  .bigkey__round, .playseq__cap { width: 44px; height: 44px; }
+}
+
 .phone-only { display: none; }
 
 /* ---------- Tablet ---------- */
 @media (max-width: 900px) {
-  .desk { padding: 16px 10px; }
-  .chassis { padding: 16px; gap: 18px; }
   .grille { display: none; }
 }
 
@@ -549,8 +619,7 @@ button { font: inherit; color: inherit; }
   .phone-only { display: inline; }
 
   /* Full-bleed device; sections stack screen → modes → pads → controls. */
-  .desk { padding: 0; }
-  .chassis { max-width: none; min-height: 100vh; border-radius: 0; box-shadow: none; padding: 14px 14px 20px; gap: 12px; }
+  .chassis { padding: 14px 14px 20px; }
   .row { flex-direction: column; gap: 12px; }
   .col-main { display: contents; }
   .bezel { order: 1; }
