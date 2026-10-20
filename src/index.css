@@ -535,12 +535,15 @@ button { font: inherit; color: inherit; }
 /* Two columns that fit the window height: screen | pads on top,
    mode keys | knobs + transport underneath. */
 @media (min-width: 861px) {
-  .chassis { height: 100vh; min-height: 600px; }
+  /* Laid out at the plugin's 1180x740 and zoomed up evenly on bigger windows
+     (--ui-scale, set by App), so pads and screen keep their proportions. */
+  .desk { zoom: var(--ui-scale, 1); min-height: calc(100vh / var(--ui-scale, 1)); }
+  .chassis { height: calc(100vh / var(--ui-scale, 1)); min-height: 600px; }
   .row {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) clamp(340px, 36vw, 540px);
+    grid-template-columns: minmax(0, 1fr) clamp(340px, calc(36vw / var(--ui-scale, 1)), 540px);
     grid-template-rows: minmax(0, 1fr) auto;
     gap: 12px 16px;
   }

@@ -20,11 +20,12 @@ export function Overview({ analysis, slices, view, onView, className = '' }: Pro
     const canvas = canvasRef.current
     if (!canvas) return
     const draw = () => {
-      const dpr = window.devicePixelRatio || 1
       const w = canvas.clientWidth
       const h = canvas.clientHeight
-      canvas.width = w * dpr
-      canvas.height = h * dpr
+      // Device pixels per layout pixel, including any CSS zoom on the page.
+      const dpr = (window.devicePixelRatio || 1) * (canvas.getBoundingClientRect().width / w || 1)
+      canvas.width = Math.round(w * dpr)
+      canvas.height = Math.round(h * dpr)
       const g = canvas.getContext('2d')!
       g.setTransform(dpr, 0, 0, dpr, 0, 0)
       g.clearRect(0, 0, w, h)
